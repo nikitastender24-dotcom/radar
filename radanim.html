@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Радары — Russian 1×1 + BY PHEN</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body { margin: 0; padding: 0; font-family: monospace; overflow: hidden; }
+
+        .pixelated,
+        .leaflet-image-layer,
+        .leaflet-overlay-pane img {
+            image-rendering: -moz-crisp-edges !important;
+            image-rendering: -webkit-optimize-contrast !important;
+            image-rendering: crisp-edges !important;
+            image-rendering: pixelated !important;
+            -ms-interpolation-mode: nearest-neighbor !important;
+        }
+
+        .tab-bar {
+            position: fixed; top: 0; left: 0; right: 0;
+            height: 46px; background: #0d1117;
+            display: flex; z-index: 3000;
+            border-bottom: 2px solid #21262d;
+        }
+        .tab-btn {
+            flex: 1; border: none; background: transparent;
+            color: #8b949e; font-family: 'Segoe UI', monospace;
+            font-size: 12px; font-weight: bold; cursor: pointer;
+            padding: 10px 8px; transition: all 0.2s;
+            border-bottom: 3px solid transparent;
+            text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .tab-btn:hover { color: #c9d1d9; background: rgba(255,255,255,0.04); }
+        .tab-btn.active-ru { color: #f0883e; border-bottom-color: #f0883e; background: rgba(240,136,62,0.08); }
+        .tab-btn.active-be { color: #58a6ff; border-bottom-color: #58a6ff; background: rgba(88,166,255,0.08); }
+
+        #map { margin-top: 46px; height: calc(100vh - 46px); width: 100%; background: #1a2a32; }
+
+        .coords {
+            position: fixed; top: 56px; right: 10px;
+            background: rgba(0,0,0,0.75); color: white;
+            padding: 8px 12px; border-radius: 6px;
+            font-size: 11px; z-index: 1000; max-width: 45vw;
+        }
+
+        .legend {
+            position: fixed; bottom: 20px; right: 20px;
+            background: rgba(0,0,0,0.88); color: #e0e0e0;
+            padding: 12px 15px; border-radius: 12px;
+            font-size: 11px; z-index: 1000; min-width: 200px;
+            backdrop-filter: blur(8px);
+            box-shadow: 0 2px 12px rgba(0,0,0,0.5);
+            pointer-events: none; max-height: 55vh; overflow-y: auto;
+            border-left: 4px solid #4caf50;
+        }
+        .legend.be-mode { border-left-color: #58a6ff; }
+        .legend h4 { margin: 0 0 10px 0; font-size: 14px; text-align: center; color: #fff; }
+        .legend-item { display: flex; align-items: center; margin-bottom: 4px; }
+        .legend-color { width: 22px; height: 13px; margin-right: 8px; border-radius: 3px; flex-shrink: 0; border: 1px solid rgba(255,255,255,0.15); }
+        .legend-text { font-size: 10px; }
+        .legend-note { font-size: 9px; color: #666; text-align: center; margin-top: 6px; border-top: 1px solid #333; padding-top: 5px; }
+
+        .control-panel {
+            position: fixed; top: 56px; left: 12px; z-index: 2000;
+            background: rgba(13,17,23,0.92); backdrop-filter: blur(10px);
+            border-radius: 12px; overflow: hidden; border: 1px solid #30363d;
+            max-width: 320px; min-width: 260px;
+        }
+        .panel-header {
+            padding: 10px 14px; cursor: pointer;
+            display: flex; align-items: center; gap: 8px;
+            color: white; font-weight: bold; font-size: 13px; min-height: 42px;
+        }
+        .panel-header.ru-mode { background: #2d1f0e; }
+        .panel-header.ru-mode:hover { background: #3d2a14; }
+        .panel-header.be-mode { background: #0d1f33; }
+        .panel-header.be-mode:hover { background: #142d4a; }
+        .arrow { transition: transform 0.3s; display: inline-block; font-size: 14px; }
+        .arrow.closed { transform: rotate(-90deg); }
+        .panel-content {
+            max-height: 0; opacity: 0; overflow: hidden;
+            transition: all 0.3s ease; padding: 0 12px;
+        }
+        .panel-content.open { max-height: 600px; opacity: 1; padding: 12px; }
+        .panel-content button {
+            border: none; color: white; padding: 8px 14px; margin: 4px 0;
+            border-radius: 6px; cursor: pointer; width: 100%;
+            font-weight: bold; min-height: 40px; font-size: 13px;
+        }
+        .btn-ru { background: #f0883e; }
+        .btn-ru:hover { background: #d2700e; }
+        .btn-be { background: #1f6feb; }
+        .btn-be:hover { background: #1758b5; }
+        .btn-play { background: #238636; }
+        .btn-play:hover { background: #1a7f2e; }
+        .btn-goto { background: #30363d; }
+        .btn-goto:hover { background: #484f58; }
+        .loading { font-size: 11px; color: #f0883e; text-align: center; margin-top: 6px; display: none; }
+        .frame-selector { display: flex; gap: 5px; margin: 6px 0; }
+        .frame-selector input {
+            flex: 1; padding: 8px; background: #21262d; color: white;
+            border: 1px solid #30363d; border-radius: 6px;
+            text-align: center; min-height: 40px; font-size: 15px;
+        }
+        .frame-selector button { width: auto !important; padding: 8px 14px; margin: 0 !important; }
+        .opacity-control {
+            margin: 6px 0; display: flex; align-items: center;
+            gap: 6px; color: #8b949e; font-size: 11px;
+        }
+        .opacity-control input[type="range"] { flex: 1; accent-color: #58a6ff; }
+        .opacity-value { width: 32px; text-align: right; color: #58a6ff; font-weight: bold; }
+
+        .radar-toggles {
+            margin: 8px 0; padding: 8px;
+            background: rgba(255,255,255,0.03);
+            border-radius: 8px; border: 1px solid #21262d;
+        }
+        .radar-toggles-title { font-size: 11px; color: #8b949e; margin-bottom: 6px; text-transform: uppercase; }
+        .radar-toggle {
+            display: flex; align-items: center; gap: 8px; padding: 4px 0;
+            cursor: pointer; color: #c9d1d9; font-size: 12px;
+        }
+        .radar-toggle:hover { color: #fff; }
+        .radar-toggle input[type="checkbox"] { accent-color: #58a6ff; width: 16px; height: 16px; cursor: pointer; }
+        .radar-toggle .radar-id { color: #8b949e; font-size: 10px; }
+        .radar-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+        .frame-info {
+            position: fixed; bottom: 16px; left: 16px;
+            background: rgba(13,17,23,0.8); color: #8b949e;
+            padding: 5px 14px; border-radius: 20px;
+            font-size: 12px; z-index: 1000; border: 1px solid #21262d;
+        }
+        .sep { margin: 8px 0; border: none; border-top: 1px solid #21262d; }
+
+        /* Отладочная панель */
+        .debug-panel {
+            position: fixed; bottom: 60px; left: 16px;
+            background: rgba(0,0,0,0.9); color: #0f0;
+            padding: 8px 12px; border-radius: 8px;
+            font-size: 10px; z-index: 9999;
+            max-width: 400px; max-height: 200px;
+            overflow-y: auto; font-family: monospace;
+            border: 1px solid #333;
+            display: none;
+        }
+        .debug-panel.visible { display: block; }
+
+        @media (max-width: 600px) {
+            .tab-btn { font-size: 9px; }
+            .control-panel { min-width: 220px; max-width: 75vw; }
+            .legend { bottom: 10px; right: 10px; max-height: 28vh; }
+            .coords { top: auto; bottom: 45px; right: 10px; font-size: 9px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="tab-bar">
+        <button class="tab-btn active-ru" id="tabRu" onclick="switchTab('ru')">🇷🇺 Russian 1×1 Phenomena</button>
+        <button class="tab-btn" id="tabBe" onclick="switchTab('be')">🇧🇾 BE Radars PHEN</button>
+    </div>
+
+    <div id="map"></div>
+    <div class="coords" id="coordsDisplay"></div>
+
+    <div class="control-panel">
+        <div class="panel-header ru-mode" id="panelHeader">
+            <span class="arrow closed" id="arrowIcon">►</span>
+            <span id="panelTitle">🎛️ Russian 1×1</span>
+        </div>
+        <div class="panel-content" id="panelContent">
+            <div id="ruControls">
+                <button class="btn-ru" id="refreshRuBtn">🔄 Обновить (tile_daemon.py)</button>
+            </div>
+            <div id="beControls" style="display:none;">
+                <button class="btn-be" id="refreshBeBtn">🔄 Обновить BE PHEN</button>
+                <div class="radar-toggles">
+                    <div class="radar-toggles-title">Радары</div>
+                    <label class="radar-toggle"><input type="checkbox" id="chk_26850" checked onchange="toggleRadar('26850')"><div class="radar-dot" style="background:#ff6b6b;"></div>Минск <span class="radar-id">26850</span></label>
+                    <label class="radar-toggle"><input type="checkbox" id="chk_26666" checked onchange="toggleRadar('26666')"><div class="radar-dot" style="background:#4ecdc4;"></div>Витебск <span class="radar-id">26666</span></label>
+                    <label class="radar-toggle"><input type="checkbox" id="chk_26825" checked onchange="toggleRadar('26825')"><div class="radar-dot" style="background:#ffe66d;"></div>Гродно <span class="radar-id">26825</span></label>
+                    <label class="radar-toggle"><input type="checkbox" id="chk_33008" checked onchange="toggleRadar('33008')"><div class="radar-dot" style="background:#a29bfe;"></div>Брест <span class="radar-id">33008</span></label>
+                </div>
+                <button class="btn-goto" id="debugToggleBtn" style="background:#333;font-size:11px;min-height:30px;">🔧 Debug</button>
+            </div>
+            <div class="loading" id="loadingIndicator">⏳ Обновление...</div>
+            <hr class="sep">
+            <div class="opacity-control">
+                <span>Прозрачность:</span>
+                <input type="range" id="opacitySlider" min="0" max="100" value="70">
+                <span class="opacity-value" id="opacityValue">70%</span>
+            </div>
+            <hr class="sep">
+            <div class="frame-selector">
+                <input type="number" id="frameNumber" min="1" max="19" value="1" step="1">
+                <button class="btn-goto" id="goToFrameBtn">▶</button>
+            </div>
+            <button class="btn-play" id="playPauseBtn">⏸️ Стоп</button>
+        </div>
+    </div>
+
+    <div class="frame-info" id="frameInfo">Кадр 1 / 19</div>
+
+    <!-- DEBUG -->
+    <div class="debug-panel" id="debugPanel"></div>
+
+    <div class="legend" id="legendPanel">
+        <h4>Явления</h4>
+        <div class="legend-item"><div class="legend-color" style="background:#808080;"></div><div class="legend-text">Облака верх. сред. яруса</div></div>
+        <div class="legend-item"><div class="legend-color" style="background:#add8e6;"></div><div class="legend-text">Слоистообразная обл.</div></div>
+        <div class="legend-item"><div class="legend-color" style="background:#90ee90;"></div><div class="legend-text">Осадки слабые</div></div>
+        <div class="legend-item"><div class="legend-color" style="background:#32cd32;"></div><div class="legend-text">Осадки умеренные</div></div>
+        <div class="legend-item"><div class="legend-color" style="background:#006400;"></div><div class="legend-text">Осадки сильные</div></div>
+        <div class="legend-item"><div class="legend-color" style="background:#ffee6e;"></div><div class="legend-text">Кучевая облачность</div></div>
+        <div class="legend-item"><div class="legend-color" style="background:#6f97d6;"></div><div class="legend-text">Ливень слабый</div></div>
+        <div class="legend-item"><div class="legend-color" style="background:#1e90ff;"></div><div class="legend-text">Ливень умеренный</div></div>
+        <div class="legend-item"><div class="legend-color" style="background:#0000cd;"></div><div class="legend-text">Ливень сильный</div></div>
+        <div class="legend-item"><div class="legend-color" style="background:#f4a460;"></div><div class="legend-text">Гроза (R)</div></div>
+        <div class="legend-item"><div class="legend-color" style="background:#ff6e6e;"></div><div class="legend-text">Гроза R)</div></div>
+        <div class="legend-item"><div class="legend-color" style="background:#ff0000;"></div><div class="legend-text">Гроза R</div></div>
+        <div class="legend-item"><div class="legend-color" style="background:#9c4040;"></div><div class="legend-text">Град слабый</div></div>
+        <div class="legend-item"><div class="legend-color" style="background:#612424;"></div><div class="legend-text">Град умеренный</div></div>
+        <div class="legend-item"><div class="legend-color" style="background:#361414;"></div><div class="legend-text">Град сильный</div></div>
+        <div class="legend-item"><div class="legend-color" style="background:#dda0dd;"></div><div class="legend-text">Шквал слабый</div></div>
+        <div class="legend-item"><div class="legend-color" style="background:#ba55d3;"></div><div class="legend-text">Шквал умеренный</div></div>
+        <div class="legend-item"><div class="legend-color" style="background:#8b008b;"></div><div class="legend-text">Шквал сильный</div></div>
+        <div class="legend-item"><div class="legend-color" style="background:#000000;"></div><div class="legend-text">Смерч</div></div>
+        <div class="legend-note" id="legendNote">DMRL-C Phenomena Legend</div>
+    </div>
+
+    <script>
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        const FRAME_INTERVAL = isMobile ? 350 : 200;
+
+        let currentTab = 'ru';
+
+        // ---- Russian ----
+        const RU_TOTAL = 19;
+
+        // ---- BE radars ----
+        const BE_RADARS = {
+            '26850': { name:'Минск',   color:'#ff6b6b', frames:19, visible:true, overlay:null },
+            '26666': { name:'Витебск', color:'#4ecdc4', frames:19, visible:true, overlay:null },
+            '26825': { name:'Гродно',  color:'#ffe66d', frames:19, visible:true, overlay:null },
+            '33008': { name:'Брест',   color:'#a29bfe', frames:19, visible:true, overlay:null },
+        };
+
+        const BE_BOUNDS = {
+          '26666': [[55.00, 20.00], [60.50, 27.50]],
+          '26825': [[50.00, 12.00], [55.50, 19.50]],
+          '26850': [[55.00, 30.00], [60.50, 37.50]],
+          '33008': [[50.00, 22.00], [55.50, 29.50]]
+        };
+        const BE_ALL_BOUNDS = [[50.0, 20.5], [57.2, 33.0]];
+
+        let beMaxFrames = 19;
+
+        // ---- MAP ----
+        const map = L.map('map', { fadeAnimation: false }).setView([53.9, 27.5], 6);
+
+        function forcePixelated(el) {
+            if (!el) return;
+            el.style.imageRendering = 'pixelated';
+        }
+        setInterval(() => {
+            const pane = map.getPane('overlayPane');
+            if (pane) pane.querySelectorAll('img').forEach(forcePixelated);
+        }, 500);
+
+        // ---- DEBUG ----
+        const debugPanel = document.getElementById('debugPanel');
+        let debugVisible = false;
+        const debugLines = [];
+
+        function dbg(msg) {
+            console.log('[DBG]', msg);
+            debugLines.push(`${new Date().toLocaleTimeString()} ${msg}`);
+            if (debugLines.length > 50) debugLines.shift();
+            debugPanel.innerHTML = debugLines.join('<br>');
+            debugPanel.scrollTop = debugPanel.scrollHeight;
+        }
+
+        document.getElementById('debugToggleBtn').addEventListener('click', () => {
+            debugVisible = !debugVisible;
+            debugPanel.classList.toggle('visible', debugVisible);
+        });
+
+        // ---- OVERLAY STATE ----
+        let ruOverlay = null;
+        let currentOpacity = 0.7;
+        let currentFrame = 1;
+        let animationInterval = null;
+        let isPlaying = true;
+
+        // RU params
+        let imgWidth = 400, imgHeight = 2000, scale = 1.0, shiftX = 0, shiftY = 0;
+
+        function getTotalFrames() {
+            return currentTab === 'ru' ? RU_TOTAL : beMaxFrames;
+        }
+
+        // ---- RU OVERLAY ----
+        function showRuOverlay(frameNum) {
+            const halfW = (imgWidth * scale) / 2;
+            const halfH = (imgHeight * scale) / 2;
+            const bounds = [
+                [shiftY - halfH, shiftX - halfW],
+                [shiftY + halfH, shiftX + halfW]
+            ];
+            if (ruOverlay) map.removeLayer(ruOverlay);
+            const url = 'frame_' + frameNum + '.png';
+            dbg('RU overlay: ' + url);
+            ruOverlay = L.imageOverlay(url, bounds, {
+                opacity: currentOpacity, className: 'pixelated', interactive: true
+            }).addTo(map);
+            const el = ruOverlay.getElement();
+            if (el) forcePixelated(el);
+            return bounds;
+        }
+
+        function updateRuUrl(frameNum) {
+            if (!ruOverlay) return;
+            const url = 'frame_' + frameNum + '.png';
+            ruOverlay.setUrl(url);
+            const el = ruOverlay.getElement();
+            if (el) forcePixelated(el);
+        }
+
+        window.setParams = function(sx, sy, sc, w, h) {
+            if (sx !== undefined) shiftX = sx;
+            if (sy !== undefined) shiftY = sy;
+            if (sc !== undefined) scale = sc;
+            if (w !== undefined) imgWidth = w;
+            if (h !== undefined) imgHeight = h;
+            if (currentTab === 'ru') showRuOverlay(currentFrame);
+        };
+
+        // ---- BE OVERLAYS ----
+        function removeAllBeOverlays() {
+            for (const rid in BE_RADARS) {
+                const r = BE_RADARS[rid];
+                if (r.overlay) { map.removeLayer(r.overlay); r.overlay = null; }
+            }
+        }
+
+        function showBeOverlay(radarId, frameNum) {
+            const r = BE_RADARS[radarId];
+            if (r.overlay) { map.removeLayer(r.overlay); r.overlay = null; }
+            if (!r.visible || r.frames === 0) return;
+
+            const fn = Math.min(frameNum, r.frames);
+            const url = 'BE_PHEN/' + radarId + '/frame_' + fn + '.png';
+            const bounds = BE_BOUNDS[radarId];
+
+            dbg('BE overlay ' + radarId + ': ' + url);
+
+            r.overlay = L.imageOverlay(url, bounds, {
+                opacity: currentOpacity, className: 'pixelated', interactive: false
+            }).addTo(map);
+
+            const el = r.overlay.getElement();
+            if (el) {
+                forcePixelated(el);
+                // Проверяем загрузку
+                el.onload = () => dbg('✅ Loaded: ' + url);
+                el.onerror = () => dbg('❌ FAILED: ' + url);
+            }
+        }
+
+        function showAllBeOverlays(frameNum) {
+            for (const rid in BE_RADARS) {
+                showBeOverlay(rid, frameNum);
+            }
+        }
+
+        function updateAllBeUrls(frameNum) {
+            for (const rid in BE_RADARS) {
+                const r = BE_RADARS[rid];
+                if (!r.visible || !r.overlay || r.frames === 0) continue;
+                const fn = Math.min(frameNum, r.frames);
+                const url = 'BE_PHEN/' + rid + '/frame_' + fn + '.png';
+                r.overlay.setUrl(url);
+                const el = r.overlay.getElement();
+                if (el) forcePixelated(el);
+            }
+        }
+
+        window.toggleRadar = function(radarId) {
+            const chk = document.getElementById('chk_' + radarId);
+            BE_RADARS[radarId].visible = chk.checked;
+            dbg('Toggle ' + radarId + ': ' + chk.checked);
+            if (currentTab !== 'be') return;
+            if (chk.checked) {
+                showBeOverlay(radarId, currentFrame);
+            } else {
+                if (BE_RADARS[radarId].overlay) {
+                    map.removeLayer(BE_RADARS[radarId].overlay);
+                    BE_RADARS[radarId].overlay = null;
+                }
+            }
+            recalcBeFrames();
+        };
+
+        function recalcBeFrames() {
+            const counts = Object.values(BE_RADARS)
+                .filter(r => r.visible && r.frames > 0)
+                .map(r => r.frames);
+            beMaxFrames = counts.length > 0 ? Math.max(...counts) : 19;
+            dbg('beMaxFrames = ' + beMaxFrames);
+        }
+
+        // ---- ANIMATION ----
+        const frameInfo = document.getElementById('frameInfo');
+        const playPauseBtn = document.getElementById('playPauseBtn');
+        const frameNumberInput = document.getElementById('frameNumber');
+
+        function updateDisplay() {
+            const total = getTotalFrames();
+            frameInfo.textContent = 'Кадр ' + currentFrame + ' / ' + total;
+            frameNumberInput.value = currentFrame;
+            frameNumberInput.max = total;
+
+            if (currentTab === 'ru') {
+                document.getElementById('coordsDisplay').innerHTML =
+                    'X: ' + shiftX.toFixed(1) + ' Y: ' + shiftY.toFixed(1) + '<br>' +
+                    'Масштаб: ' + scale.toFixed(2) + '<br>Размер: ' + imgWidth + '×' + imgHeight;
+            } else {
+                const active = Object.entries(BE_RADARS)
+                    .filter(([,r]) => r.visible)
+                    .map(([id,r]) => r.name + '(' + r.frames + ')')
+                    .join(' ');
+                document.getElementById('coordsDisplay').innerHTML =
+                    'BY PHEN<br>Радары: ' + active + '<br>Кадр: ' + currentFrame + '/' + total;
+            }
+        }
+
+        function showFrame(n) {
+            currentFrame = n;
+            if (currentTab === 'ru') {
+                updateRuUrl(n);
+            } else {
+                updateAllBeUrls(n);
+            }
+            updateDisplay();
+        }
+
+        function nextFrame() {
+            const total = getTotalFrames();
+            currentFrame = (currentFrame % total) + 1;
+            showFrame(currentFrame);
+        }
+
+        function startAnimation() {
+            if (animationInterval) clearInterval(animationInterval);
+            animationInterval = setInterval(nextFrame, FRAME_INTERVAL);
+            isPlaying = true;
+            playPauseBtn.textContent = '⏸️ Стоп';
+        }
+        function stopAnimation() {
+            if (animationInterval) { clearInterval(animationInterval); animationInterval = null; }
+            isPlaying = false;
+            playPauseBtn.textContent = '▶️ Пуск';
+        }
+
+        playPauseBtn.addEventListener('click', () => { if (isPlaying) stopAnimation(); else startAnimation(); });
+
+        document.getElementById('goToFrameBtn').addEventListener('click', () => {
+            const f = parseInt(frameNumberInput.value);
+            const total = getTotalFrames();
+            if (!isNaN(f) && f >= 1 && f <= total) { stopAnimation(); showFrame(f); }
+        });
+
+        // ---- OPACITY ----
+        const opacitySlider = document.getElementById('opacitySlider');
+        const opacityValue = document.getElementById('opacityValue');
+        opacitySlider.addEventListener('input', () => {
+            currentOpacity = opacitySlider.value / 100;
+            opacityValue.textContent = opacitySlider.value + '%';
+            if (currentTab === 'ru' && ruOverlay) {
+                ruOverlay.setOpacity(currentOpacity);
+            } else {
+                for (const rid in BE_RADARS) {
+                    if (BE_RADARS[rid].overlay) BE_RADARS[rid].overlay.setOpacity(currentOpacity);
+                }
+            }
+        });
+
+        // ---- PANEL ----
+        const panelHeader = document.getElementById('panelHeader');
+        const panelContent = document.getElementById('panelContent');
+        const arrowIcon = document.getElementById('arrowIcon');
+        let panelOpen = false;
+        panelHeader.addEventListener('click', () => {
+            panelOpen = !panelOpen;
+            panelContent.classList.toggle('open', panelOpen);
+            arrowIcon.classList.toggle('closed', !panelOpen);
+            arrowIcon.textContent = panelOpen ? '▼' : '►';
+        });
+
+        // ---- REFRESH ----
+        const loadingIndicator = document.getElementById('loadingIndicator');
+
+        document.getElementById('refreshRuBtn').addEventListener('click', async () => {
+            loadingIndicator.style.display = 'block';
+            try {
+                const r = await fetch('http://localhost:5000/run_daemon', { method:'POST' });
+                const j = await r.json();
+                if (j.status === 'ok') { alert('Запущен! Перезагрузка через 5с.'); setTimeout(()=>location.reload(),5000); }
+            } catch(e) { alert('Запустите: python server.py'); }
+            finally { loadingIndicator.style.display = 'none'; }
+        });
+
+        document.getElementById('refreshBeBtn').addEventListener('click', async () => {
+            loadingIndicator.style.display = 'block';
+            try {
+                const r = await fetch('http://localhost:5000/run_be_phen', { method:'POST' });
+                const j = await r.json();
+                if (j.status === 'ok') { alert('BE PHEN запущен! Перезагрузка через 5с.'); setTimeout(()=>location.reload(),5000); }
+            } catch(e) { alert('Запустите: python be_phen_daemon.py --once'); }
+            finally { loadingIndicator.style.display = 'none'; }
+        });
+
+        // ---- LOAD BE RADAR INFO ----
+        async function loadBeRadarsInfo() {
+            dbg('Loading radars.json...');
+
+            // Метод 1: radars.json
+            try {
+                const r = await fetch('BE_PHEN/radars.json?t=' + Date.now());
+                if (r.ok) {
+                    const data = await r.json();
+                    for (const rid in data) {
+                        if (BE_RADARS[rid]) {
+                            BE_RADARS[rid].frames = data[rid].frames || 0;
+                            dbg('  ' + rid + ' (' + data[rid].name + '): ' + data[rid].frames + ' frames');
+                        }
+                    }
+                    recalcBeFrames();
+                    return;
+                } else {
+                    dbg('radars.json: HTTP ' + r.status);
+                }
+            } catch(e) {
+                dbg('radars.json failed: ' + e.message);
+            }
+
+            // Метод 2: индивидуальные frame_count.txt
+            dbg('Fallback: reading frame_count.txt per radar');
+            for (const rid in BE_RADARS) {
+                try {
+                    const r2 = await fetch('BE_PHEN/' + rid + '/frame_count.txt?t=' + Date.now());
+                    if (r2.ok) {
+                        const n = parseInt(await r2.text());
+                        if (!isNaN(n) && n > 0) {
+                            BE_RADARS[rid].frames = n;
+                            dbg('  ' + rid + ': ' + n + ' frames');
+                        }
+                    } else {
+                        dbg('  ' + rid + ': HTTP ' + r2.status);
+                    }
+                } catch(e2) {
+                    dbg('  ' + rid + ': error ' + e2.message);
+                }
+            }
+            recalcBeFrames();
+
+            // Метод 3: просто пробуем загрузить frame_1.png
+            dbg('Testing frame_1.png availability...');
+            for (const rid in BE_RADARS) {
+                const testUrl = 'BE_PHEN/' + rid + '/frame_1.png';
+                try {
+                    const r3 = await fetch(testUrl, { method: 'HEAD' });
+                    dbg('  ' + rid + ' frame_1: ' + r3.status + ' ' + (r3.ok ? '✅' : '❌'));
+                } catch(e3) {
+                    dbg('  ' + rid + ' frame_1: error');
+                }
+            }
+        }
+
+        // ---- TAB SWITCH ----
+        const tabRu = document.getElementById('tabRu');
+        const tabBe = document.getElementById('tabBe');
+        const panelTitle = document.getElementById('panelTitle');
+        const ruControls = document.getElementById('ruControls');
+        const beControls = document.getElementById('beControls');
+        const legendPanel = document.getElementById('legendPanel');
+        const legendNote = document.getElementById('legendNote');
+
+        async function switchTab(tab) {
+            dbg('switchTab: ' + tab);
+            stopAnimation();
+            currentFrame = 1;
+
+            // Убираем всё
+            if (ruOverlay) { map.removeLayer(ruOverlay); ruOverlay = null; }
+            removeAllBeOverlays();
+
+            currentTab = tab;
+
+            if (tab === 'ru') {
+                tabRu.className = 'tab-btn active-ru';
+                tabBe.className = 'tab-btn';
+                panelHeader.className = 'panel-header ru-mode';
+                panelTitle.textContent = '🎛️ Russian 1×1';
+                ruControls.style.display = '';
+                beControls.style.display = 'none';
+                legendPanel.className = 'legend';
+                legendNote.textContent = 'DMRL-C Phenomena Legend';
+
+                const bounds = showRuOverlay(1);
+                map.fitBounds(bounds);
+            } else {
+                tabRu.className = 'tab-btn';
+                tabBe.className = 'tab-btn active-be';
+                panelHeader.className = 'panel-header be-mode';
+                panelTitle.textContent = '🎛️ BY Radars PHEN';
+                ruControls.style.display = 'none';
+                beControls.style.display = '';
+                legendPanel.className = 'legend be-mode';
+                legendNote.textContent = 'Belarus Radars PHEN';
+
+                await loadBeRadarsInfo();
+                showAllBeOverlays(1);
+                map.fitBounds(BE_ALL_BOUNDS);
+            }
+
+            updateDisplay();
+            startAnimation();
+        }
+
+        // Zoom
+        map.on('zoomend', () => {
+            if (ruOverlay) { const el = ruOverlay.getElement(); if (el) forcePixelated(el); }
+            for (const rid in BE_RADARS) {
+                if (BE_RADARS[rid].overlay) {
+                    const el = BE_RADARS[rid].overlay.getElement();
+                    if (el) forcePixelated(el);
+                }
+            }
+        });
+
+        // ---- INIT ----
+        dbg('Init...');
+        dbg('Location: ' + window.location.href);
+        dbg('Protocol: ' + window.location.protocol);
+
+        if (window.location.protocol === 'file:') {
+            dbg('⚠️ ФАЙЛОВЫЙ ПРОТОКОЛ! Fetch не будет работать!');
+            dbg('Запустите: python server.py и откройте http://localhost:5000');
+            alert('⚠️ Страница открыта как файл!\n\nЗапустите сервер:\n  python server.py\n\nОткройте:\n  http://localhost:5000/index.html');
+        }
+
+        showRuOverlay(1);
+        updateDisplay();
+        startAnimation();
+        dbg('Ready. ' + (isMobile ? 'Mobile' : 'Desktop'));
+    </script>
+</body>
+</html>
