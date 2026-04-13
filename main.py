@@ -6,9 +6,10 @@ from io import BytesIO
 from PIL import Image, ImageSequence
 from datetime import datetime
 
-from flask import Flask
+from flask import Flask, send_file
 import threading
 
+# ========== ДОБАВЛЕНО ==========
 app = Flask(__name__)
 
 # ========== НАСТРОЙКИ ==========
@@ -21,7 +22,7 @@ MINY = 42.07763077261187
 MAXX = 62.60899643948548
 MAXY = 68.22855697214425
 
-# ========== ТВОЙ КОД (НЕ ТРОГАЛ) ==========
+# ========== ТВОЙ КОД БЕЗ ИЗМЕНЕНИЙ ==========
 
 def download_gif():
     print(f"[{datetime.now()}] 📥 Скачиваю гифку...")
@@ -44,6 +45,7 @@ def save_frame(frame, index):
 
     world_content = f"{pixel_width}\n0\n0\n-{pixel_height}\n{MINX}\n{MAXY}"
     pgw_path = f"frame_{index}.pgw"
+
     with open(pgw_path, 'w') as f:
         f.write(world_content)
 
@@ -76,16 +78,11 @@ def worker():
         time.sleep(CHECK_INTERVAL)
         refresh_frames()
 
-# ========== FLASK СЕРВЕР (ВАЖНО) ==========
+# ========== 🔥 ДОБАВЛЕНО ТОЛЬКО ЭТО ==========
 
 @app.route("/")
 def home():
-    files = os.listdir(".")
-    images = [f for f in files if f.endswith(".png")]
-    return {
-        "status": "running",
-        "frames": len(images)
-    }
+    return send_file("radanim.html")
 
 # ========== ЗАПУСК ==========
 
