@@ -6,12 +6,10 @@ from io import BytesIO
 from PIL import Image, ImageSequence
 from datetime import datetime
 
-# ➕ ДОБАВИЛИ
-from fastapi import FastAPI
+from flask import Flask
 import threading
-import uvicorn
 
-app = FastAPI()
+app = Flask(__name__)
 
 # ========== НАСТРОЙКИ ==========
 GIF_URL = "https://meteoinfo.ru/hmc-output/rmap/phenomena.gif"
@@ -23,7 +21,7 @@ MINY = 42.07763077261187
 MAXX = 62.60899643948548
 MAXY = 68.22855697214425
 
-# ========== ФУНКЦИИ ==========
+# ========== ТВОЙ КОД (НЕ ТРОГАЛ) ==========
 
 def download_gif():
     print(f"[{datetime.now()}] 📥 Скачиваю гифку...")
@@ -58,31 +56,29 @@ def cleanup_old_frames():
             os.remove(f)
             deleted += 1
     if deleted:
-        print(f"[{datetime.now()}] 🗑️ Удалено {deleted} старых файлов")
+        print(f"[{datetime.now()}] 🗑️ Удалено {deleted} файлов")
 
 def refresh_frames():
-    print(f"[{datetime.now()}] 🔄 Начинаю обновление кадров...")
+    print(f"[{datetime.now()}] 🔄 Обновление...")
     cleanup_old_frames()
     try:
         frames = download_gif()
         for i, frame in enumerate(frames, start=1):
             save_frame(frame, i)
-        print(f"[{datetime.now()}] ✅ Обновление завершено")
+        print(f"[{datetime.now()}] ✅ Готово")
     except Exception as e:
         print(f"[{datetime.now()}] ❌ Ошибка: {e}")
 
 def worker():
     print("🚀 ДЕМОН ЗАПУЩЕН")
-
     refresh_frames()
-
     while True:
         time.sleep(CHECK_INTERVAL)
         refresh_frames()
 
-# ========== ➕ ВЕБ-СЕРВЕР (ДОБАВЛЕНО) ==========
+# ========== FLASK СЕРВЕР (ВАЖНО) ==========
 
-@app.get("/")
+@app.route("/")
 def home():
     files = os.listdir(".")
     images = [f for f in files if f.endswith(".png")]
@@ -100,4 +96,4 @@ if __name__ == "__main__":
     threading.Thread(target=start_worker, daemon=True).start()
 
     port = int(os.environ.get("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=port)
